@@ -1,49 +1,35 @@
-# 🔐 DocVault
+# 🔐 CaseVault
 
-### Secure Document Storage & Management System
+### Secure Case & Document Management System
 
-DocVault is a web-based document management platform designed to help users securely store, organize, manage, and access their important documents.
-
-It provides document storage, case management, role-based access control, team collaboration, and activity tracking through a centralized dashboard.
+CaseVault is a web-based platform for securely storing, organizing, and sharing case documents. It combines case management, role-based access control, team collaboration, and a full audit trail in one dashboard, backed by Supabase.
 
 ## ✨ Features
 
 ### 📁 Document Management
-
-* Upload and store documents.
-* Organize documents by cases and categories.
-* Manage document versions.
-* Download and access stored documents.
-* Control document access through permissions.
+* Upload documents to private storage (PDF, images, Word, Excel, PowerPoint, text, CSV, ZIP; up to 25 MB).
+* Organize documents by case and category.
+* Version tracking and controlled overwrite.
+* Download through short-lived signed URLs.
+* Per-document permissions (view, upload, edit, download).
 
 ### 📂 Case Management
-
-* Create, view, and manage cases.
-* Track case status and priority.
-* View detailed case information.
-* Organize cases through a centralized dashboard.
+* Create, view, and manage cases with auto-generated case numbers.
+* Track status (Open, In Review, Closed, Archived) and priority.
+* Assign cases and manage case teams.
+* Searchable case list and dashboard.
 
 ### 🔑 Authentication & Access Control
-
-* User authentication with Supabase.
-* Role-based access control (RBAC).
-* Admin and user access restrictions.
-* Document-level permissions.
-* Multi-factor authentication (TOTP).
-
-### 👥 Team Management
-
-* Manage team members.
-* Assign users to cases.
-* Control access to case information.
+* Real Supabase Auth sessions (no client-side credentials).
+* Roles: `admin`, `investigator`, `officer`, `analyst`, stored in the `profiles` table.
+* Multi-factor authentication with TOTP (authenticator app). Admins must enrol on first login.
+* Role changes can only be made by an existing admin.
 
 ### 🛡️ Security & Audit
-
-* PostgreSQL Row Level Security (RLS).
-* Private Supabase Storage bucket.
-* Storage access policies.
-* Activity and audit history.
-* Admin approval workflow for deletion requests.
+* PostgreSQL Row Level Security (RLS) on all tables.
+* Private Supabase Storage bucket with path-based storage policies.
+* Activity log per case and a global audit history.
+* Two-admin approval workflow for permanent deletions.
 
 ## 🛠️ Tech Stack
 
@@ -59,78 +45,87 @@ It provides document storage, case management, role-based access control, team c
 ## 📂 Project Structure
 
 ```text
-DocVault/
+casevault/
 ├── src/
-│   ├── components/
-│   ├── context/
+│   ├── components/     # UI screens and widgets
+│   ├── context/        # Auth provider (Supabase session + MFA)
 │   ├── hooks/
-│   ├── lib/
+│   ├── lib/            # Supabase client, database and storage helpers
 │   ├── types/
 │   ├── app.tsx
 │   └── main.tsx
 ├── supabase/
-│   ├── migrations/
-│   └── seed.sql
+│   ├── migrations/     # Schema, RLS and storage policies (run in order)
+│   └── seed.sql        # Optional local-only demo users
 ├── .env.example
-├── .gitignore
 ├── package.json
-├── index.html
 └── README.md
 ```
 
 ## ⚙️ Getting Started
 
 ### Prerequisites
-
-* Node.js (LTS version recommended)
-* npm
+* Node.js (LTS) and npm
 * Git
-* A Supabase account
+* A Supabase account and project
 
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/nk0273926/DocVault.git
-cd DocVault
-```
-
-### 2. Install dependencies
+### 1. Clone and install
 
 ```bash
+git clone https://github.com/nk0273926/casevault.git
+cd casevault
 npm install
 ```
 
-### 3. Configure environment variables
+### 2. Configure environment variables
 
-Copy `.env.example` to `.env` in the project root:
+Copy `.env.example` to `.env` in the project root and fill in your values from **Supabase → Project Settings → API Keys**:
 
 ```env
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-publishable-or-anon-key
 ```
 
-Replace the placeholder values with your Supabase project credentials.
+* Use the base project URL only (no `/rest/v1/` at the end).
+* Use the **publishable / anon** key. **Never** put the secret / `service_role` key in the app or commit it.
+* Restart `npm run dev` after changing `.env`.
 
-**Never commit your `.env` file, API secrets, or Supabase service-role keys to GitHub.**
+### 3. Set up the database
 
-### 4. Configure Supabase
+In the Supabase **SQL Editor**, run every file in `supabase/migrations/` in filename order:
 
-1. Create a Supabase project.
-2. Open the Supabase SQL Editor.
-3. Run the SQL migration files from `supabase/migrations/` in chronological order.
-4. Configure authentication settings.
-5. Set up the required database tables and storage bucket.
-6. Configure Row Level Security and storage access policies.
+1. `20260822172014_create_case_management_schema.sql`
+2. `20260822172036_create_storage_bucket.sql`
+3. `20260823065358_add_rbac_schema.sql`
+4. `20260823120000_security_hardening.sql`
+5. `20260823130000_security_hardening_v2.sql`
+6. `20260823140000_security_hardening_v3.sql`
+7. `20260823150000_safe_storage_policies.sql`
 
-Refer to `supabase/seed.sql` for the project's demo data setup instructions.
+Afterwards, confirm no public (`anon`) policies remain:
 
-### 5. Start the development server
+```sql
+select count(*) from pg_policies where 'anon' = any(roles);  -- should be 0
+```
+
+### 4. Create your first admin
+
+1. Supabase → **Authentication → Users → Add user → Create new user** (tick **Auto Confirm User**).
+2. In the SQL Editor, promote the user:
+
+```sql
+update profiles set role = 'admin' where email = 'you@example.com';
+```
+
+New users start as `analyst`. To change a role later, update `profiles.role` (admins only). `supabase/seed.sql` can create demo users for **local development only**; it contains known demo passwords, so never run it against a real project.
+
+### 5. Run the app
 
 ```bash
 npm run dev
 ```
 
-Open the local URL displayed in your terminal to access DocVault.
+Sign in with your admin account. On first login an admin is asked to scan a QR code with an authenticator app (Google Authenticator, Authy, etc.) and enter a 6-digit code. Later logins only ask for the code.
 
 ## 🧪 Available Scripts
 
@@ -142,32 +137,33 @@ Open the local URL displayed in your terminal to access DocVault.
 | `npm run lint`      | Run ESLint                   |
 | `npm run typecheck` | Check TypeScript types       |
 
+## 👥 Roles at a Glance
+
+| Role         | Access                                                         |
+| ------------ | -------------------------------------------------------------- |
+| Admin        | All cases and users, approvals, audit history                  |
+| Investigator | Cases they belong to; can upload and edit documents            |
+| Officer      | Cases they belong to; view access, extra rights if granted     |
+| Analyst      | Cases they belong to; view-only by default                     |
+
+Non-admin users only see cases where they are on the case team. Document-level permissions can grant or restrict individual actions.
+
 ## 🔒 Security Notes
 
-DocVault uses Supabase authentication, database access policies, and private file storage to help protect documents.
-
-* Access to documents and cases is controlled through permissions.
-* Database access is protected using RLS policies.
-* Administrative operations are restricted to authorized users.
-* Login uses real Supabase Auth sessions; roles come from the `profiles` table.
-* MFA is real Supabase TOTP (authenticator app). Admins must enrol one on first login.
-
-Review and test all authentication, database, and storage policies before using real confidential documents.
+* Identity and role come from the Supabase session and the `profiles` table, never from browser storage.
+* All tables use RLS; files live in a private bucket and are served through signed URLs.
+* Keep `.env` out of Git (it is already in `.gitignore`).
+* MFA is currently enforced in the app. For stricter protection, add `aal2` checks to your RLS policies.
+* Review and test all authentication, database, and storage policies before storing real confidential documents.
 
 ## 🚧 Project Status
 
-DocVault is under development. The project includes document storage, case management, authentication, permissions, and audit functionality.
-
-Some security and authentication features require further testing and production configuration.
+CaseVault is under active development. Core features (authentication, MFA, cases, documents, permissions, audit) are working, but the project still needs broader testing and production hardening (for example, an in-app user/role editor and backup/recovery planning).
 
 ## 👨‍💻 Author
 
-**Nikhil Kumar**
-
-GitHub: [@nk0273926](https://github.com/nk0273926)
+**Nikhil Kumar** · GitHub: [@nk0273926](https://github.com/nk0273926)
 
 ---
 
-<p align="center">
-  Built with React, TypeScript and Supabase.
-</p>
+<p align="center">Built with React, TypeScript and Supabase.</p>
